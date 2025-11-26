@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "397983462840",
+    "project_id": "ecometer-pro",
+    "storage_bucket": "ecometer-pro.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:397983462840:android:28b6e0916f938d31b48b4d",
+        "android_client_info": {
+          "package_name": "com.ecometerusa.ecometerpro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYfxNJX7qnBTYv4Fz9PSh80DaKa5cVLSI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
