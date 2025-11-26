@@ -11,10 +11,14 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # ✅ keep shared_preferences
+  # ✅ Firebase for auth & app init
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.0
+
+  # ✅ Local settings
   shared_preferences: ^2.2.2
 
-  # This can stay here or be moved to dev_dependencies later
+  # Lints (can stay here or in dev_dependencies)
   flutter_lints: ^6.0.0
 
 flutter:
