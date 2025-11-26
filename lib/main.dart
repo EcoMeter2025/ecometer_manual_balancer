@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum _BalanceMode {
@@ -37,9 +35,7 @@ class AppSettings {
   }
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // uses google-services.json on Android
+void main() {
   runApp(const EcoMeterApp());
 }
 
@@ -117,7 +113,7 @@ class _EcoMeterAppState extends State<EcoMeterApp> {
       title: 'EcoMeter Outlet Balancer',
       debugShowCheckedModeBanner: false,
       theme: _darkMode ? darkTheme : lightTheme,
-      home: AuthGate(onSettingsChanged: _refreshTheme),
+      home: HomeScreen(onSettingsChanged: _refreshTheme),
     );
   }
 }
@@ -160,323 +156,6 @@ class EcoAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-/// AUTH GATE – listens to FirebaseAuth and switches between auth + home.
-class AuthGate extends StatelessWidget {
-  final VoidCallback onSettingsChanged;
-
-  const AuthGate({super.key, required this.onSettingsChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final user = snapshot.data;
-
-        if (user == null) {
-          return const SignInScreen();
-        }
-
-        return HomeScreen(onSettingsChanged: onSettingsChanged);
-      },
-    );
-  }
-}
-
-/// SIGN-IN / CREATE-ACCOUNT SCREEN
-/// Default: CREATE ACCOUNT, with small text to switch to sign-in.
-class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
-
-  @override
-  State<SignInScreen> createState() => _SignInScreenState();
-}
-
-class _SignInScreenState extends State<SignInScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  bool _isLogin = false; // <--- default to CREATE ACCOUNT
-  bool _isLoading = false;
-  String? _errorMessage;
-
-  Future<void> _forgotPassword() async {
-    final email = _emailController.text.trim();
-
-    if (email.isEmpty || !email.contains("@")) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Enter a valid email first to reset your password."),
-        ),
-      );
-      return;
-    }
-
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Password reset email sent to $email")),
-      );
-    } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: ${e.message}")));
-    }
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final auth = FirebaseAuth.instance;
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
-
-      if (_isLogin) {
-        await auth.signInWithEmailAndPassword(email: email, password: password);
-      } else {
-        await auth.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      String msg = 'Authentication error. Please try again.';
-      if (e.code == 'user-not-found') {
-        msg = 'No user found for that email.';
-      } else if (e.code == 'wrong-password') {
-        msg = 'Wrong password. Try again.';
-      } else if (e.code == 'email-already-in-use') {
-        msg = 'An account already exists for that email.';
-      } else if (e.code == 'weak-password') {
-        msg = 'Password should be at least 6 characters.';
-      }
-
-      setState(() => _errorMessage = msg);
-    } catch (_) {
-      setState(
-        () => _errorMessage =
-            'Something went wrong. Check connection and try again.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _toggleMode() {
-    setState(() {
-      _isLogin = !_isLogin;
-      _errorMessage = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textColor =
-        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.white;
-    const accent = Color(0xFF2F7F32);
-
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      appBar: const EcoAppBar(showBack: false),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Card(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? const Color(0xFF111111)
-                    : Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: accent.withOpacity(0.4)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isLogin
-                              ? 'Sign in to EcoMeter Pro'
-                              : 'Create your EcoMeter account',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: textColor,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Use your email and a password you\'ll remember.\n'
-                          'You\'ll use this account to access future Pro features.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: textColor.withOpacity(0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: InputDecoration(
-                            labelText: 'Email',
-                            labelStyle: TextStyle(
-                              color: textColor.withOpacity(0.7),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(
-                                color: textColor.withOpacity(0.3),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: accent),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Enter your email.';
-                            }
-                            if (!value.contains('@')) {
-                              return 'Enter a valid email address.';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            labelStyle: TextStyle(
-                              color: textColor.withOpacity(0.7),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(
-                                color: textColor.withOpacity(0.3),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(color: accent),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Enter your password.';
-                            }
-                            if (value.length < 6) {
-                              return 'Password must be at least 6 characters.';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        // Forgot password row
-                        if (_isLogin)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: _isLoading ? null : _forgotPassword,
-                              child: const Text(
-                                'Forgot password?',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        if (_errorMessage != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: accent,
-                            ),
-                            onPressed: _isLoading ? null : _submit,
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : Text(
-                                    _isLogin ? 'SIGN IN' : 'CREATE ACCOUNT',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: _isLoading ? null : _toggleMode,
-                          child: Text(
-                            _isLogin
-                                ? 'Need an account? Create one.'
-                                : 'Already have an account? Sign in.',
-                            style: const TextStyle(color: accent),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -576,17 +255,6 @@ Run EcoMeter ProPortional Quick Check.
               ),
             ),
             const SizedBox(height: 16),
-            Center(
-              child: TextButton(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                },
-                child: Text(
-                  'Sign out',
-                  style: TextStyle(color: accent.withOpacity(0.9)),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -837,8 +505,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
   int? _currentBalancingIndex;
   int? _lockedKeyIndex;
   final Set<int> _lockedOutlets = {};
-  bool _requiresKeyRecheck =
-      false; // NEW: key must be re-measured after target change
+  bool _requiresKeyRecheck = false;
 
   // System gate
   bool _awaitingSystemFix = false;
@@ -1022,7 +689,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
             'Adjustment recorded for ${_outlets[index].nameController.text}.\n'
             'Re-measure the key outlet: ${_outlets[_keyIndex!].nameController.text}.';
         _globalMessageColor = Colors.white;
-        _requiresKeyRecheck = true; // ✅ key reading is now required
+        _requiresKeyRecheck = true;
       });
 
       _focusMeasuredAndSelect(_keyIndex!);
@@ -1038,7 +705,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     // 2) Finished typing on KEY → recalc, then decide what’s next
     if (index == _keyIndex) {
       setState(() {
-        _requiresKeyRecheck = false; // 🟢 key is fresh again
+        _requiresKeyRecheck = false;
       });
 
       _recalculateAllWithLockedKey();
@@ -1053,7 +720,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
 
       final next = _findNextBalancingOutlet();
 
-      // ✅ NO MORE OUTLETS OUT OF TOLERANCE → ENTER FINAL CHECK MODE
       if (next == null) {
         setState(() {
           _mode = _BalanceMode.finalCheck;
@@ -1063,7 +729,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
           _globalMessageColor = Colors.green;
         });
 
-        // scroll to top so they see instructions
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           _scrollToTop();
@@ -1072,7 +737,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
         return;
       }
 
-      // There is another outlet to balance
       _currentBalancingIndex = next;
       final nextName = _outlets[next].nameController.text;
       final estimate = _computeEstimatedTargetCFM(next);
@@ -1094,8 +758,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
 
       return;
     }
-
-    // Anything else in balancing mode: ignore
   }
 
   // FINAL CHECK: walk measured column, forcing a fresh reading in each field.
@@ -1149,7 +811,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     _lockedOutlets.clear();
     _awaitingSystemFix = false;
     _showFinalSummary = false;
-    _requiresKeyRecheck = false; // ✅
+    _requiresKeyRecheck = false;
 
     setState(() {
       _addOutlet();
@@ -1161,9 +823,9 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
   // Treat blank / invalid measured entries as 0 CFM
   double _coerceMeasuredCFM(String text) {
     final t = text.trim();
-    if (t.isEmpty) return 0.0; // no entry ⇒ 0 CFM
+    if (t.isEmpty) return 0.0;
     final v = double.tryParse(t);
-    if (v == null || v < 0) return 0.0; // bad/negative ⇒ 0 CFM
+    if (v == null || v < 0) return 0.0;
     return v;
   }
 
@@ -1171,7 +833,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     final minusTol = double.tryParse(_minusTolController.text) ?? 10;
     final plusTol = double.tryParse(_plusTolController.text) ?? 10;
 
-    // First pass: compute % of design for every outlet.
     for (final o in _outlets) {
       final design = double.tryParse(o.designController.text);
       final measured = _coerceMeasuredCFM(o.measuredController.text);
@@ -1182,7 +843,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
         o.statusText = 'Invalid input';
         o.statusColor = Colors.grey;
       } else {
-        // Blank measured ⇒ 0 CFM ⇒ 0 % of design (valid but very starved)
         o.percentOfDesign = (measured / design) * 100.0;
         o.tolOfKey = null;
         o.statusText = '';
@@ -1197,7 +857,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
 
     final keyOutlet = _outlets[_keyIndex!];
     final keyPercentOfDesign = keyOutlet.percentOfDesign;
-    // Key must have a positive measured reading
     if (keyPercentOfDesign == null || keyPercentOfDesign <= 0) {
       setState(() {});
       return;
@@ -1222,8 +881,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       final larger = pOutlet > pKey ? pOutlet : pKey;
       final smaller = pOutlet > pKey ? pKey : pOutlet;
 
-      // If one outlet is at 0 % of design, treat this as extremely out of tolerance,
-      // not as "invalid input".
       if (smaller <= 0) {
         o.tolOfKey = double.infinity;
         o.statusText =
@@ -1268,7 +925,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
 
     final larger = pOutlet > pKey ? pOutlet : pKey;
     final smaller = pOutlet > pKey ? pKey : pOutlet;
-    if (smaller <= 0) return false; // 0 % of design is out of tolerance
+    if (smaller <= 0) return false;
 
     final ratio = larger / smaller;
     final minusTol = double.tryParse(_minusTolController.text) ?? 10;
@@ -1295,12 +952,10 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       final o = _outlets[i];
 
       if (_balanceToIdeal) {
-        // IDEAL mode: skip only green
         if (_isWithinIdealTolerance(o)) {
           continue;
         }
       } else {
-        // DESIGN mode: skip anything within design tolerance (yellow or green)
         if (_isWithinDesignTolerance(o)) {
           continue;
         }
@@ -1345,7 +1000,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       return null;
     }
 
-    // Total measured CFM T across all valid outlets
     double totalMeasured = 0;
     for (final o in _outlets) {
       final m = double.tryParse(o.measuredController.text);
@@ -1355,8 +1009,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     }
     if (totalMeasured <= 0) return null;
 
-    // Predictive proportional formula:
-    // Aj' = (Ak * Dj * T) / (-Aj * Dk + Ak * Dj + Dk * T)
     final denominator =
         (-aTarget * dKey) + (aKey * dTarget) + (dKey * totalMeasured);
     if (denominator.abs() < 1e-9) return null;
@@ -1370,8 +1022,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
   // ===== MAIN BUTTONS =====
 
   void _runQuickCheck() {
-    // If we are in balancing mode and a target was adjusted,
-    // force a fresh key reading before allowing another readiness check.
     if (_mode == _BalanceMode.balancing &&
         _requiresKeyRecheck &&
         _keyIndex != null) {
@@ -1389,7 +1039,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
         _scrollToOutletRow(_keyIndex!);
       });
 
-      return; // ⛔ block the bad action
+      return;
     }
 
     FocusScope.of(context).unfocus();
@@ -1400,7 +1050,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     _lockedOutlets.clear();
     _awaitingSystemFix = false;
     _showFinalSummary = false;
-    _requiresKeyRecheck = false; // reset when we truly re-enter QuickCheck
+    _requiresKeyRecheck = false;
 
     setState(() {
       _globalMessage = null;
@@ -1440,13 +1090,12 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     double totalDesign = 0;
     double totalMeasured = 0;
 
-    // First pass: compute totals and % of design for each outlet.
     for (final o in _outlets) {
       final design = double.tryParse(o.designController.text);
       final measured = _coerceMeasuredCFM(o.measuredController.text);
 
       if (design != null) totalDesign += design;
-      totalMeasured += measured; // blank ⇒ 0 CFM
+      totalMeasured += measured;
 
       if (design == null || design <= 0) {
         o.percentOfDesign = null;
@@ -1461,7 +1110,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       }
     }
 
-    // Pick key outlet: must have a real measured reading (> 0 CFM)
     int? keyIndex;
     double? lowestPercent;
 
@@ -1478,7 +1126,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
           measuredRaw > 0;
 
       if (!hasValidKeyMeasurement) {
-        continue; // don't use blank/zero CFM outlets as the key
+        continue;
       }
 
       if (o.percentOfDesign != null) {
@@ -1506,7 +1154,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
 
     bool allWithinDesignTol = true;
 
-    // Second pass: compute tolerance-of-key for each outlet.
     for (final o in _outlets) {
       final pOutlet = o.percentOfDesign;
       final pKey = keyPercentOfDesign;
@@ -1522,8 +1169,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       final larger = pOutlet > pKey ? pOutlet : pKey;
       final smaller = pOutlet > pKey ? pKey : pOutlet;
 
-      // If an outlet is at 0 % of design (no reading ⇒ 0 CFM),
-      // treat it as far out of tolerance, not "invalid".
       if (smaller <= 0) {
         o.tolOfKey = double.infinity;
         o.statusText =
@@ -1601,7 +1246,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       }
     }
 
-    // Passed gate → balancing mode
     _keyIndex = keyIndex;
     _lockedKeyIndex = keyIndex;
     _lockedOutlets.clear();
@@ -1661,7 +1305,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       totalPercent = (totalMeasured / totalDesign) * 100.0;
     }
 
-    // Gate #1: final system total must be within project tolerances
     if (totalPercent != null) {
       final low = 100 - minusTol;
       final high = 100 + plusTol;
@@ -1683,7 +1326,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       }
     }
 
-    // Gate #2: all outlets must be within design tolerance of the key
     bool allWithinDesignTol = true;
     final targetUpper = (1 + plusTol / 100.0) / (1 - minusTol / 100.0);
 
@@ -1735,7 +1377,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       }
     }
 
-    // Passed all gates
     setState(() {
       _showFinalSummary = true;
       _mode = _BalanceMode.finalCheck;
@@ -1793,7 +1434,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
       _lockedOutlets.clear();
       _awaitingSystemFix = false;
       _showFinalSummary = false;
-      _requiresKeyRecheck = false; // ✅
+      _requiresKeyRecheck = false;
     });
 
     _focusMeasuredAndSelect(0);
@@ -2113,22 +1754,18 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
                   onSubmitted: (_) => _handleMeasuredSubmitted(index),
                   onEditingComplete: () => _handleMeasuredSubmitted(index),
                   onChanged: (value) {
-                    // Any change to the current balancing target’s measured value
-                    // means the key MUST be re-measured before running readiness again.
                     if (_mode == _BalanceMode.balancing && _keyIndex != null) {
                       if (index == _currentBalancingIndex &&
                           index != _keyIndex) {
                         if (!_requiresKeyRecheck) {
                           setState(() {
-                            _requiresKeyRecheck =
-                                true; // 🔴 target changed → key required
+                            _requiresKeyRecheck = true;
                           });
                         }
                       } else if (index == _keyIndex) {
-                        // Typing on the key outlet itself satisfies the requirement.
                         if (_requiresKeyRecheck) {
                           setState(() {
-                            _requiresKeyRecheck = false; // 🟢 key updated
+                            _requiresKeyRecheck = false;
                           });
                         }
                       }
@@ -2223,7 +1860,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     );
   }
 
-  // NEW: Balancing panel with Save Reading buttons (future Capture Reading)
+  // Balancing panel with Save Reading buttons
   Widget _buildBalancingPanel() {
     if (_keyIndex == null || _currentBalancingIndex == null) {
       return const SizedBox.shrink();
@@ -2271,7 +1908,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
             style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 12),
           ),
           const SizedBox(height: 12),
-          // Adjusting outlet block
           Text(
             'Adjusting outlet',
             style: TextStyle(
@@ -2302,7 +1938,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: accent),
               onPressed: () {
-                // Treat this like the tech hit "done" on the adjusting outlet.
                 _handleMeasuredSubmittedBalancing(_currentBalancingIndex!);
               },
               child: const Text(
@@ -2315,7 +1950,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // Key outlet block
           Text(
             'Key outlet (locked)',
             style: TextStyle(
@@ -2339,7 +1973,6 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: accent),
               onPressed: () {
-                // Treat this like the tech hit "done" on the KEY outlet.
                 _handleMeasuredSubmittedBalancing(_keyIndex!);
               },
               child: const Text(
@@ -2364,7 +1997,7 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
     bool selectOnTap = false,
     VoidCallback? onTap,
     void Function(String)? onChanged,
-    VoidCallback? onEditingComplete, // 👈 still allowed, but guarded
+    VoidCallback? onEditingComplete,
   }) {
     final textColor =
         Theme.of(context).textTheme.bodyMedium?.color ?? Colors.white;
@@ -2377,18 +2010,12 @@ class _BalanceCalculatorScreenState extends State<BalanceCalculatorScreen> {
         signed: false,
       ),
       textInputAction: TextInputAction.done,
-
-      // 🔹 Primary handler when user presses "done"/Enter
       onSubmitted: onSubmitted,
-
-      // 🔹 Only fire onEditingComplete when there is *no* onSubmitted,
-      // to avoid calling our logic twice.
       onEditingComplete: () {
         if (onEditingComplete != null && onSubmitted == null) {
           onEditingComplete();
         }
       },
-
       onChanged: onChanged,
       onTap: () {
         if (selectOnTap) {
