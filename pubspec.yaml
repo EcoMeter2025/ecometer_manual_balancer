@@ -2,7 +2,8 @@ name: ecometer_manual_balancer
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 1.0.2+2   # or 1.0.3+3, just higher than before
+
 
 
 environment:
